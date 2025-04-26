@@ -16,8 +16,8 @@ class Board:
         }
         self.current_player = "human"
         self.game_over = False
-        self.premium_squares = self.initialize_premium_squares()
         self.first_move = True
+        self.premium_squares = self.initialize_premium_squares()
     
     def initialize_tile_bag(self):
         """Create tile bag with standard Scrabble distribution"""
@@ -42,6 +42,18 @@ class Board:
             else:
                 self.game_over = True
         return tiles
+    def reset(self):
+        """Reset the game board to initial state"""
+        self.board = [[None for _ in range(self.size)] for _ in range(self.size)]
+        self.scores = {"human": 0, "ai": 0}
+        self.tile_bag = self.initialize_tile_bag()
+        self.player_racks = {
+            "human": self.draw_tiles(7),
+            "ai": self.draw_tiles(7)
+        }
+        self.current_player = "human"
+        self.game_over = False
+        self.first_move = True
     
     def initialize_premium_squares(self):
         """Set up premium squares (TW, DW, TL, DL)"""
