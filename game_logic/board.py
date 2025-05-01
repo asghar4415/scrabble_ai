@@ -2,12 +2,14 @@
 from typing import Dict, List, Tuple, Optional
 import random
 from copy import deepcopy
-from .game_utils import is_valid_word, calculate_word_score,LETTER_SCORES
+from .game_utils import is_valid_word, calculate_word_score, LETTER_SCORES
+
 
 class Board:
     def __init__(self):
         self.size = 15
-        self.board = [[None for _ in range(self.size)] for _ in range(self.size)]
+        self.board = [[None for _ in range(self.size)]
+                      for _ in range(self.size)]
         self.scores = {"human": 0, "ai": 0}
         self.tile_bag = self.initialize_tile_bag()
         self.player_racks = {
@@ -18,7 +20,7 @@ class Board:
         self.game_over = False
         self.first_move = True
         self.premium_squares = self.initialize_premium_squares()
-    
+
     def initialize_tile_bag(self):
         """Create tile bag with standard Scrabble distribution"""
         distribution = {
@@ -32,7 +34,7 @@ class Board:
             tile_bag.extend([letter] * count)
         random.shuffle(tile_bag)
         return tile_bag
-    
+
     def draw_tiles(self, count: int) -> List[str]:
         """Draw tiles from the bag"""
         tiles = []
@@ -42,9 +44,11 @@ class Board:
             else:
                 self.game_over = True
         return tiles
+
     def reset(self):
         """Reset the game board to initial state"""
-        self.board = [[None for _ in range(self.size)] for _ in range(self.size)]
+        self.board = [[None for _ in range(self.size)]
+                      for _ in range(self.size)]
         self.scores = {"human": 0, "ai": 0}
         self.tile_bag = self.initialize_tile_bag()
         self.player_racks = {
@@ -54,7 +58,7 @@ class Board:
         self.current_player = "human"
         self.game_over = False
         self.first_move = True
-    
+
     def initialize_premium_squares(self):
         """Set up premium squares (TW, DW, TL, DL)"""
         premium_squares = {
@@ -64,24 +68,24 @@ class Board:
             # Add all standard Scrabble premium squares
         }
         return premium_squares
-    
-    def place_word(self, word: str, row: int, col: int, 
-                  direction: str, is_ai: bool) -> bool:
+
+    def place_word(self, word: str, row: int, col: int,
+                   direction: str, is_ai: bool) -> bool:
         """Place a word on the board with full validation"""
         player = "ai" if is_ai else "human"
-        
+
         if not self.validate_move(word, row, col, direction, player):
             return False
-        
+
         # Place the word
         score = 0
         word_multiplier = 1
         letters_used = []
-        
+
         for i, letter in enumerate(word):
             r = row + (i if direction == "vertical" else 0)
             c = col + (i if direction == "horizontal" else 0)
-            
+
             # Only apply premium squares for new tiles
             if self.board[r][c] is None:
                 square = self.premium_squares.get((r, c))
@@ -95,28 +99,28 @@ class Board:
                     word_multiplier *= 3
                 else:
                     score += LETTER_SCORES[letter]
-                
+
                 self.board[r][c] = letter
                 letters_used.append(letter)
-        
+
         score *= word_multiplier
         self.scores[player] += score
-        
+
         # Remove used letters from rack and draw new ones
         self.remove_from_rack(letters_used, player)
         self.refill_rack(player)
-        
+
         self.switch_turn()
         self.first_move = False
         return True
-    
-    def validate_move(self, word: str, row: int, col: int, 
-                     direction: str, player: str) -> bool:
+
+    def validate_move(self, word: str, row: int, col: int,
+                      direction: str, player: str) -> bool:
         """Validate all aspects of a move"""
         # Check word validity
         if not is_valid_word(word):
             return False
-        
+
         # Check bounds
         if direction == "horizontal":
             if col + len(word) > self.size:
@@ -124,26 +128,26 @@ class Board:
         else:
             if row + len(word) > self.size:
                 return False
-        
+
         # Check player has the letters
         if not self.has_letters(word, player):
             return False
-        
+
         # Check word connects with existing words (unless first move)
         if not self.first_move and not self.check_connections(word, row, col, direction):
             return False
-        
+
         # Check all newly formed words are valid
         if not self.check_new_words(word, row, col, direction):
             return False
-            
+
         return True
-    
+
     def has_letters(self, word: str, player: str) -> bool:
         """Check if player has the required letters"""
         rack = self.player_racks[player]
         word_letters = list(word)
-        
+
         for letter in word_letters:
             if letter in rack:
                 rack.remove(letter)
@@ -152,31 +156,31 @@ class Board:
             else:
                 return False
         return True
-    
-    def check_connections(self, word: str, row: int, col: int, 
-                         direction: str) -> bool:
+
+    def check_connections(self, word: str, row: int, col: int,
+                          direction: str) -> bool:
         """Check if word connects with existing words"""
         for i in range(len(word)):
             r = row + (i if direction == "vertical" else 0)
             c = col + (i if direction == "horizontal" else 0)
-            
+
             # Check if adjacent to existing tiles
-            for dr, dc in [(-1,0), (1,0), (0,-1), (0,1)]:
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
                 nr, nc = r + dr, c + dc
                 if 0 <= nr < self.size and 0 <= nc < self.size:
                     if self.board[nr][nc] is not None:
                         return True
         return False
-    
-    def check_new_words(self, word: str, row: int, col: int, 
-                       direction: str) -> bool:
+
+    def check_new_words(self, word: str, row: int, col: int,
+                        direction: str) -> bool:
         """Check all newly formed words are valid"""
         # This should check perpendicular words formed by the placement
         # Implementation omitted for brevity but should:
         # 1. Find all new words formed
         # 2. Check each is valid using is_valid_word
         return True
-    
+
     def remove_from_rack(self, letters: List[str], player: str):
         """Remove used letters from player's rack"""
         for letter in letters:
@@ -184,18 +188,18 @@ class Board:
                 self.player_racks[player].remove(letter)
             else:  # Blank tile
                 self.player_racks[player].remove(' ')
-    
+
     def refill_rack(self, player: str):
         """Refill player's rack to 7 tiles"""
         needed = 7 - len(self.player_racks[player])
         if needed > 0:
             new_tiles = self.draw_tiles(needed)
             self.player_racks[player].extend(new_tiles)
-    
+
     def switch_turn(self):
         """Switch current player"""
         self.current_player = "ai" if self.current_player == "human" else "human"
-    
+
     def get_state(self):
         """Return current board state"""
         return {
