@@ -4,14 +4,20 @@ from pydantic import BaseModel
 from typing import Dict, List, Optional, Tuple
 import random
 from copy import deepcopy
-import json
+import enchant
 
 app = FastAPI()
+
+try:
+    english_dict = enchant.Dict("en_US")
+except enchant.errors.DictNotFoundError:
+    english_dict = enchant.DictWithPWL("en_US", "custom_words.txt")
+
 
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -32,16 +38,26 @@ LETTER_SCORES = {
 }
 
 # Simple word dictionary - replace with a proper dictionary in production
-VALID_WORDS = {
-    "WORD", "TEST", "SCRABBLE", "AI", "PLAY", "HELLO", "WORLD",
-    "PYTHON", "FASTAPI", "REACT", "GAME", "BOARD", "TILE",
-    "LETTER", "SCORE", "MOVE", "VALID", "HORIZONTAL", "VERTICAL"
-}
+# VALID_WORDS = {
+#     "DAD", "MOM", "ADD", "CAT", "DOG", "HOUSE", "COMPUTER", "PHONE", "WATER", "FIRE",
+#     "EARTH", "AIR", "LOVE", "HATE", "PEACE", "WAR", "BOOK",
+#     "MEN", "PAPER", "CHAIR", "TABLE", "DOOR", "WINDOW", "PEN"
+#     "QI", "ZA", "AX", "EX", "JO", "OX", "XI", "XU"
+# }
 
 
 def is_valid_word(word: str) -> bool:
-    """Check if word exists in dictionary"""
-    return word.upper() in VALID_WORDS
+    """Check if word exists in dictionary using pyenchant"""
+    # Minimum 2 letters for Scrabble rules
+    if len(word) < 2:
+        return False
+
+    # Check if word contains only letters
+    if not word.isalpha():
+        return False
+
+    # Standard dictionary check
+    return english_dict.check(word.upper())
 
 
 def calculate_word_score(word: str, letter_multipliers: List[int] = None,
@@ -56,7 +72,6 @@ def calculate_word_score(word: str, letter_multipliers: List[int] = None,
         score += letter_score * letter_multipliers[i]
 
     return score * word_multiplier
-
 # --------------------------
 # Board and Game Logic
 # --------------------------
@@ -173,35 +188,43 @@ class Board:
 
     def validate_move(self, word: str, row: int, col: int,
                       direction: str, player: str) -> bool:
-        """Validate all aspects of a move"""
+        """Enhanced validation"""
         # Check word validity
         if not is_valid_word(word):
             return False
 
         # Check bounds
+        word_len = len(word)
         if direction == "horizontal":
-            if col + len(word) > self.size:
+            if col + word_len > self.size:
                 return False
         else:
-            if row + len(word) > self.size:
+            if row + word_len > self.size:
                 return False
 
-        # Check player has the letters
-        if not self.has_letters(word, player):
+        # Check first move goes through center
+        if self.first_move:
+            center = self.size // 2
+            if direction == "horizontal":
+                if not (row == center and col <= center < col + word_len):
+                    return False
+            else:
+                if not (col == center and row <= center < row + word_len):
+                    return False
+
+    # Create a copy of the rack for validation
+        rack_copy = self.player_racks[player].copy()
+        if not self._has_letters(word, rack_copy):
             return False
 
-        # Check word connects with existing words (unless first move)
         if not self.first_move and not self.check_connections(word, row, col, direction):
             return False
 
         return True
 
-    def has_letters(self, word: str, player: str) -> bool:
-        """Check if player has the required letters"""
-        rack = self.player_racks[player]
-        word_letters = list(word)
-
-        for letter in word_letters:
+    def _has_letters(self, word: str, rack: List[str]) -> bool:
+        """Helper method that doesn't modify the rack"""
+        for letter in word:
             if letter in rack:
                 rack.remove(letter)
             elif ' ' in rack:  # Blank tile
@@ -340,10 +363,28 @@ def generate_possible_moves(board: Board) -> List[Dict]:
 
 def get_relevant_words(board: Board) -> List[str]:
     """Get words that can be formed with current rack"""
-    # In a real implementation, this would use the AI's rack letters
-    # and a dictionary to find possible words
-    # For now, return a small subset for testing
-    return ["WORD", "TEST", "SCRABBLE", "AI", "PLAY", "HELLO", "WORLD"]
+    rack_letters = board.player_racks["ai"]
+    possible_words = []
+
+    # This is simplified - in production you'd use a proper word dictionary
+    for word in VALID_WORDS:
+        if can_form_word(word, rack_letters):
+            possible_words.append(word)
+
+    return possible_words
+
+
+def can_form_word(word: str, rack: List[str]) -> bool:
+    """Check if word can be formed from rack letters"""
+    rack_copy = rack.copy()
+    for letter in word.upper():
+        if letter in rack_copy:
+            rack_copy.remove(letter)
+        elif ' ' in rack_copy:  # Blank tile
+            rack_copy.remove(' ')
+        else:
+            return False
+    return True
 
 
 def evaluate_position(board: Board) -> int:
@@ -420,8 +461,28 @@ def player_move(move: MoveRequest):
     if game_board.current_player != "human":
         raise HTTPException(status_code=400, detail="Not your turn")
 
+    # Enhanced error messages
+    if not is_valid_word(move.word):
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{move.word}' is not a valid Scrabble word"
+        )
+
+    if not game_board.has_letters(move.word, "human"):
+        raise HTTPException(
+            status_code=400,
+            detail="You don't have the required letters for this word"
+        )
+
+    if not game_board.validate_move(move.word, move.row, move.col, move.direction, "human"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid move position - must connect with existing words"
+        )
+
     if not game_board.place_word(move.word, move.row, move.col, move.direction, is_ai=False):
-        raise HTTPException(status_code=400, detail="Invalid move")
+        raise HTTPException(
+            status_code=400, detail="Move failed - unknown reason")
 
     # AI move
     ai_move = get_ai_move(game_board)
